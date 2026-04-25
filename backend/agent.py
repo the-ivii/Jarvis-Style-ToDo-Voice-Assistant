@@ -64,10 +64,30 @@ def _system_prompt() -> str:
     return SYSTEM_PROMPT.format(today=datetime.now().strftime("%A, %B %d, %Y"))
 
 
-def _dispatch_tool(name: str, args: dict[str, Any]) -> dict[str, Any]:
+_INT_PARAMS = {"todo_id", "limit"}
+
+
+def _coerce_args(args: Any) -> dict[str, Any]:
+    """Defensive arg normalisation: null → {}, string ints → ints."""
+    if args is None:
+        return {}
+    if not isinstance(args, dict):
+        return {}
+    out = dict(args)
+    for k in list(out.keys()):
+        if k in _INT_PARAMS and isinstance(out[k], str):
+            try:
+                out[k] = int(out[k])
+            except ValueError:
+                pass
+    return out
+
+
+def _dispatch_tool(name: str, args: Any) -> dict[str, Any]:
     fn = TOOL_FUNCTIONS.get(name)
     if fn is None:
         return {"ok": False, "error": f"Unknown tool: {name}"}
+    args = _coerce_args(args)
     try:
         return fn(**args)
     except TypeError as e:

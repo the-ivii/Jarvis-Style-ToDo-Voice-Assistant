@@ -100,9 +100,15 @@ class MemoryStore:
                     )
                 )
             scored.sort(key=lambda t: t[0], reverse=True)
-            top = [item for sim, item in scored[:limit] if sim > 0.25]
+            # Primary: items above the confidence threshold.
+            top = [item for sim, item in scored[:limit] if sim > 0.18]
             if top:
                 return top
+            # Fallback: the MiniLM model can under-score valid matches
+            # (e.g. "family" vs "sister's birthday"). Rather than returning
+            # nothing, surface the best few and let the agent judge.
+            if scored:
+                return [item for _, item in scored[: min(3, limit)]]
             # else: fall through to keyword search so we never return empty when data exists
 
         # keyword fallback

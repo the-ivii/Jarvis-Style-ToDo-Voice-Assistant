@@ -275,7 +275,6 @@ TOOL_SCHEMAS = [
                 "type": "object",
                 "properties": {
                     "query": {"type": "string", "description": "What to search for."},
-                    "limit": {"type": "integer", "description": "Max number of memories (default 5)."},
                 },
                 "required": ["query"],
             },
@@ -286,12 +285,7 @@ TOOL_SCHEMAS = [
         "function": {
             "name": "list_memories",
             "description": "List the most recently saved memories.",
-            "parameters": {
-                "type": "object",
-                "properties": {
-                    "limit": {"type": "integer", "description": "Default 20."},
-                },
-            },
+            "parameters": {"type": "object", "properties": {}},
         },
     },
 ]
