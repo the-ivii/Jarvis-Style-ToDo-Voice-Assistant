@@ -41,6 +41,21 @@
     </aside>
 
     <main class="main">
+      <div id="mic-host-banner" class="host-banner" hidden>
+        <span class="host-banner-icon" aria-hidden="true">⚠️</span>
+        <div class="host-banner-body">
+          <p>
+            <strong>Microphone needs a real host name.</strong>
+            You opened <code id="mic-current-origin"></code> — browsers block voice on <code>0.0.0.0</code>.
+          </p>
+          <p class="host-banner-cta">Open the same app here (pick one):</p>
+          <ul class="host-banner-links">
+            <li><a id="link-voice-127" class="host-link" href="#">…</a></li>
+            <li><a id="link-voice-localhost" class="host-link" href="#">…</a></li>
+          </ul>
+          <p class="host-banner-hint">You can still type messages in the box below.</p>
+        </div>
+      </div>
       <section id="conversation" class="conversation">
         <div class="hero" id="hero">
           <div class="orb" aria-hidden="true"></div>

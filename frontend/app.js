@@ -14,6 +14,10 @@ const API = {
 const els = {
   conversation: document.getElementById("conversation"),
   hero: document.getElementById("hero"),
+  micHostBanner: document.getElementById("mic-host-banner"),
+  micCurrentOrigin: document.getElementById("mic-current-origin"),
+  linkVoice127: document.getElementById("link-voice-127"),
+  linkVoiceLocalhost: document.getElementById("link-voice-localhost"),
   micBtn: document.getElementById("mic-btn"),
   textForm: document.getElementById("text-form"),
   textInput: document.getElementById("text-input"),
@@ -53,7 +57,7 @@ if (SR) {
   recognition.onerror = (e) => {
     console.warn("Recognition error:", e.error);
     if (e.error === "not-allowed") {
-      alert("Microphone permission denied. Please allow it in your browser settings.");
+      showMicPermissionHelp();
     }
   };
   recognition.onend = () => {
@@ -297,6 +301,63 @@ function escapeHtml(s) {
 }
 
 // -----------------------------------------------------------------------------
+// Mic: 0.0.0.0 vs real hostname (browser security)
+// Rebuilds any URL (port, path, ?query, #hash) for 127.0.0.1 / localhost.
+// -----------------------------------------------------------------------------
+/**
+ * @param {string} newHostname e.g. "127.0.0.1" or "localhost"
+ * @returns {string}
+ */
+function sameAppUrlWithHostname(newHostname) {
+  try {
+    const u = new URL(window.location.href);
+    u.hostname = newHostname;
+    return u.href;
+  } catch (_) {
+    return `http://${newHostname}/`;
+  }
+}
+
+function fillVoiceLinkAnchor(el, hostLabel) {
+  if (!el) return;
+  const u = sameAppUrlWithHostname(hostLabel);
+  el.href = u;
+  el.textContent = u;
+}
+
+function setupMicHostBanner() {
+  if (els.micCurrentOrigin) {
+    els.micCurrentOrigin.textContent = window.location.origin || window.location.href;
+  }
+  fillVoiceLinkAnchor(els.linkVoice127, "127.0.0.1");
+  fillVoiceLinkAnchor(els.linkVoiceLocalhost, "localhost");
+
+  if (els.micHostBanner) {
+    els.micHostBanner.hidden = location.hostname !== "0.0.0.0";
+  }
+}
+
+function showMicPermissionHelp() {
+  const h = location.hostname;
+  const v4 = sameAppUrlWithHostname("127.0.0.1");
+  const loc = sameAppUrlWithHostname("localhost");
+
+  let msg = "Microphone access was blocked.\n\n";
+  if (h === "0.0.0.0") {
+    msg +=
+      "0.0.0.0 is not a valid host for the microphone in most browsers. Open the same page at:\n\n" +
+      `${v4}\n` +
+      `or\n${loc}\n\n`;
+  } else {
+    msg += `You are on: ${window.location.origin}\n\n`;
+  }
+  msg +=
+    "Allow the microphone when asked, or: lock icon → Site settings → Microphone → Allow.\n\n" +
+    "On Mac: System Settings → Privacy & Security → Microphone → enable for your browser.";
+  alert(msg);
+}
+
+// -----------------------------------------------------------------------------
 // Health / provider badge
 // -----------------------------------------------------------------------------
 async function loadHealth() {
@@ -319,6 +380,7 @@ async function loadHealth() {
 // Boot
 // -----------------------------------------------------------------------------
 (async function boot() {
+  setupMicHostBanner();
   await loadHealth();
   await refreshPanels();
   // Replay history into the view if any

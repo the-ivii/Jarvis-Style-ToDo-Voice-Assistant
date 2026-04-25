@@ -148,11 +148,8 @@ def _reply_text_from_response(response: types.GenerateContentResponse) -> str:
     return ""
 
 
-def run_agent(
-    user_message: str, history: Optional[List[Dict[str, Any]]] = None
-) -> dict[str, Any]:
+def _gemini_loop(user_message: str, history: list[dict[str, Any]]) -> dict[str, Any]:
     client = _client()
-    history = list(history or [])
     contents = _contents_from_history(history, user_message)
     base_cfg = types.GenerateContentConfig(
         system_instruction=_system_prompt(),
@@ -239,3 +236,37 @@ def run_agent(
         {"role": "assistant", "content": reply_text},
     ]
     return {"reply": reply_text, "tool_calls": tool_trace, "history": new_h}
+
+
+def run_agent(
+    user_message: str, history: Optional[List[Dict[str, Any]]] = None
+) -> dict[str, Any]:
+    history = list(history or [])
+    try:
+        return _gemini_loop(user_message, history)
+    except Exception as e:  # noqa: BLE001
+        log.exception("Gemini call failed")
+        s = str(e)
+        sl = s.lower()
+        if "leaked" in sl or "permission_denied" in sl or "403" in s:
+            msg = (
+                "The Gemini API key is invalid, revoked, or was disabled after being exposed. "
+                "Create a new key at https://aistudio.google.com/apikey, set GOOGLE_API_KEY in "
+                ".env, and restart the server. Never share keys in chat, screenshots, or public repos."
+            )
+        elif "api key" in sl or ("invalid" in sl and "key" in sl):
+            msg = "Check GOOGLE_API_KEY in .env. Get a key at https://aistudio.google.com/apikey"
+        else:
+            msg = (
+                "The assistant could not reach Gemini. Check your network, GEMINI_MODEL, and API key. "
+                f"Error: {s[:300]}"
+            )
+        return {
+            "reply": msg,
+            "tool_calls": [],
+            "history": history
+            + [
+                {"role": "user", "content": user_message},
+                {"role": "assistant", "content": msg},
+            ],
+        }
