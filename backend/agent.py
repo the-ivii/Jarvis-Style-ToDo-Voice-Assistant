@@ -1,20 +1,17 @@
 """
-Agent core: a tool-calling loop that works with both Groq and OpenAI
-(their chat completion APIs are nearly identical, and both accept the OpenAI
-function-calling schema format).
+Agent core: tool-calling loop using **Google Gemini** (google.genai SDK).
 
-The agent decides on each turn whether to:
-  - call one or more tools (todo CRUD / memory save/recall), or
-  - respond directly to the user conversationally.
-
-Transcript & tool traces are returned so the UI can show what happened.
+The model decides each turn whether to call tools (todo CRUD / memory) or reply
+in natural language. Tool traces are returned for the UI.
 """
 from __future__ import annotations
 
-import json
 import logging
 from datetime import datetime
-from typing import Any
+from typing import Any, Dict, List, Optional
+
+from google import genai
+from google.genai import types
 
 from . import config
 from .tools import TOOL_FUNCTIONS, TOOL_SCHEMAS
@@ -47,19 +44,6 @@ You have tools for todos (`add_todo`, `list_todos`, `update_todo`, `delete_todo`
 """
 
 
-def _build_client():
-    if config.LLM_PROVIDER == "openai":
-        from openai import OpenAI
-        if not config.OPENAI_API_KEY:
-            raise RuntimeError("OPENAI_API_KEY not set")
-        return OpenAI(api_key=config.OPENAI_API_KEY), config.OPENAI_MODEL
-    # default: groq
-    from groq import Groq
-    if not config.GROQ_API_KEY:
-        raise RuntimeError("GROQ_API_KEY not set")
-    return Groq(api_key=config.GROQ_API_KEY), config.GROQ_MODEL
-
-
 def _system_prompt() -> str:
     return SYSTEM_PROMPT.format(today=datetime.now().strftime("%A, %B %d, %Y"))
 
@@ -68,18 +52,22 @@ _INT_PARAMS = {"todo_id", "limit"}
 
 
 def _coerce_args(args: Any) -> dict[str, Any]:
-    """Defensive arg normalisation: null → {}, string ints → ints."""
+    """Normalise: null → {}, string/float → int for id fields."""
     if args is None:
         return {}
     if not isinstance(args, dict):
         return {}
     out = dict(args)
     for k in list(out.keys()):
-        if k in _INT_PARAMS and isinstance(out[k], str):
-            try:
-                out[k] = int(out[k])
-            except ValueError:
-                pass
+        if k in _INT_PARAMS and out[k] is not None:
+            v = out[k]
+            if isinstance(v, str):
+                try:
+                    out[k] = int(v)
+                except ValueError:
+                    pass
+            elif isinstance(v, (float, int)) and not isinstance(v, bool):
+                out[k] = int(v)
     return out
 
 
@@ -97,90 +85,157 @@ def _dispatch_tool(name: str, args: Any) -> dict[str, Any]:
         return {"ok": False, "error": str(e)}
 
 
-def run_agent(user_message: str, history: list[dict[str, Any]] | None = None) -> dict[str, Any]:
-    """
-    Run one agent turn. Returns:
-        {
-            "reply": str,                         # final assistant text
-            "tool_calls": [ {name, args, result} ],
-            "history": [...]                      # updated full history for next turn
-        }
-    """
-    client, model = _build_client()
-    history = list(history or [])
-
-    messages: list[dict[str, Any]] = [{"role": "system", "content": _system_prompt()}]
-    messages.extend(history)
-    messages.append({"role": "user", "content": user_message})
-
-    tool_trace: list[dict[str, Any]] = []
-
-    # Let the model chain up to N tool calls before forcing a final answer.
-    MAX_STEPS = 5
-    for _ in range(MAX_STEPS):
-        resp = client.chat.completions.create(
-            model=model,
-            messages=messages,
-            tools=TOOL_SCHEMAS,
-            tool_choice="auto",
-            temperature=0.3,
-        )
-        msg = resp.choices[0].message
-
-        # Record the assistant message exactly as returned (important for tool_calls roundtrip)
-        assistant_entry: dict[str, Any] = {"role": "assistant", "content": msg.content or ""}
-        if msg.tool_calls:
-            assistant_entry["tool_calls"] = [
-                {
-                    "id": tc.id,
-                    "type": "function",
-                    "function": {"name": tc.function.name, "arguments": tc.function.arguments},
-                }
-                for tc in msg.tool_calls
-            ]
-        messages.append(assistant_entry)
-
-        if not msg.tool_calls:
-            # Final response
-            reply_text = (msg.content or "").strip()
-            new_history = history + [
-                {"role": "user", "content": user_message},
-                {"role": "assistant", "content": reply_text},
-            ]
-            return {"reply": reply_text, "tool_calls": tool_trace, "history": new_history}
-
-        # Execute each requested tool and append results
-        for tc in msg.tool_calls:
-            name = tc.function.name
-            try:
-                args = json.loads(tc.function.arguments or "{}")
-            except json.JSONDecodeError:
-                args = {}
-            result = _dispatch_tool(name, args)
-            tool_trace.append({"name": name, "args": args, "result": result})
-            messages.append(
-                {
-                    "role": "tool",
-                    "tool_call_id": tc.id,
-                    "name": name,
-                    "content": json.dumps(result),
-                }
+def _build_gemini_tools() -> list[types.Tool]:
+    decls: list[types.FunctionDeclaration] = []
+    for entry in TOOL_SCHEMAS:
+        f = entry["function"]
+        params = f.get("parameters")
+        if not params:
+            params = {"type": "object", "properties": {}}
+        decls.append(
+            types.FunctionDeclaration(
+                name=f["name"],
+                description=f.get("description", ""),
+                parameters_json_schema=params,
             )
+        )
+    return [types.Tool(function_declarations=decls)]
 
-    # Safety net: stopped due to MAX_STEPS. Ask the model for a final text answer.
-    resp = client.chat.completions.create(
-        model=model,
-        messages=messages + [
-            {
-                "role": "system",
-                "content": "Stop calling tools now and reply to the user in plain prose.",
-            }
-        ],
+
+def _client() -> genai.Client:
+    if not config.GOOGLE_API_KEY or config.GOOGLE_API_KEY == "your_google_api_key_here":
+        raise RuntimeError("GOOGLE_API_KEY is not set")
+    return genai.Client(api_key=config.GOOGLE_API_KEY)
+
+
+def _contents_from_history(
+    history: list[dict[str, Any]], user_message: str
+) -> list[types.Content]:
+    out: list[types.Content] = []
+    for m in history or []:
+        if m.get("role") == "user":
+            out.append(
+                types.Content(
+                    role="user",
+                    parts=[types.Part.from_text(text=m.get("content") or "")],
+                )
+            )
+        elif m.get("role") == "assistant":
+            out.append(
+                types.Content(
+                    role="model",
+                    parts=[types.Part.from_text(text=m.get("content") or "")],
+                )
+            )
+    out.append(
+        types.Content(
+            role="user",
+            parts=[types.Part.from_text(text=user_message)],
+        )
+    )
+    return out
+
+
+def _reply_text_from_response(response: types.GenerateContentResponse) -> str:
+    t = (response.text or "").strip()
+    if t:
+        return t
+    if not response.candidates or not response.candidates[0].content:
+        return ""
+    for p in response.candidates[0].content.parts or []:
+        if p.text and not p.thought:
+            return (p.text or "").strip()
+    return ""
+
+
+def run_agent(
+    user_message: str, history: Optional[List[Dict[str, Any]]] = None
+) -> dict[str, Any]:
+    client = _client()
+    history = list(history or [])
+    contents = _contents_from_history(history, user_message)
+    base_cfg = types.GenerateContentConfig(
+        system_instruction=_system_prompt(),
+        tools=_build_gemini_tools(),
         temperature=0.3,
     )
-    reply_text = (resp.choices[0].message.content or "").strip()
-    new_history = history + [
+
+    tool_trace: list[dict[str, Any]] = []
+    model_id = config.GEMINI_MODEL
+    MAX_STEPS = 5
+
+    for _ in range(MAX_STEPS):
+        response = client.models.generate_content(
+            model=model_id,
+            contents=contents,
+            config=base_cfg,
+        )
+
+        if not response.candidates or not response.candidates[0].content:
+            fb = ""
+            if response.prompt_feedback is not None:
+                fb = str(response.prompt_feedback)
+            msg = f"I couldn't get a response from the model right now. {fb}".strip()
+            new_h = history + [
+                {"role": "user", "content": user_message},
+                {"role": "assistant", "content": msg},
+            ]
+            return {"reply": msg, "tool_calls": tool_trace, "history": new_h}
+
+        fcs = response.function_calls
+        if fcs:
+            cand = response.candidates[0]
+            contents.append(cand.content)
+            fr_parts: list[types.Part] = []
+            for fc in fcs:
+                name = (fc.name or "").strip()
+                args = _coerce_args(fc.args)
+                result = _dispatch_tool(name, args)
+                tool_trace.append({"name": name, "args": args, "result": result})
+                fr = types.FunctionResponse(
+                    name=name,
+                    response=result,
+                    id=fc.id,
+                )
+                fr_parts.append(types.Part(function_response=fr))
+            contents.append(types.Content(role="user", parts=fr_parts))
+            continue
+
+        reply_text = _reply_text_from_response(response) or "I'm not sure what to say."
+        new_h = history + [
+            {"role": "user", "content": user_message},
+            {"role": "assistant", "content": reply_text},
+        ]
+        return {"reply": reply_text, "tool_calls": tool_trace, "history": new_h}
+
+    # Safety: force a text-only follow-up
+    no_tools = types.GenerateContentConfig(
+        system_instruction=_system_prompt(),
+        temperature=0.3,
+        tool_config=types.ToolConfig(
+            function_calling_config=types.FunctionCallingConfig(
+                mode=types.FunctionCallingConfigMode.NONE,
+            )
+        ),
+    )
+    response = client.models.generate_content(
+        model=model_id,
+        contents=contents
+        + [
+            types.Content(
+                role="user",
+                parts=[
+                    types.Part.from_text(
+                        text="Please answer the user in plain, short speech. Do not use tools."
+                    )
+                ],
+            )
+        ],
+        config=no_tools,
+    )
+    reply_text = _reply_text_from_response(response) or "Done."
+    new_h = history + [
         {"role": "user", "content": user_message},
         {"role": "assistant", "content": reply_text},
     ]
-    return {"reply": reply_text, "tool_calls": tool_trace, "history": new_history}
+    return {"reply": reply_text, "tool_calls": tool_trace, "history": new_h}

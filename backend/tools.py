@@ -157,7 +157,7 @@ def list_memories(limit: int = 20) -> dict[str, Any]:
 
 
 # ---------------------------------------------------------------------------
-# Tool schemas (OpenAI / Groq function-calling format)
+# Tool schemas (JSON Schema; used with Gemini function declarations)
 # ---------------------------------------------------------------------------
 
 TOOL_SCHEMAS = [

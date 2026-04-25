@@ -32,12 +32,11 @@ app.add_middleware(
 @app.on_event("startup")
 def _startup() -> None:
     init_db()
-    log.info("DB ready. LLM provider: %s  Model: %s", config.LLM_PROVIDER, config.active_model())
+    log.info("DB ready. Gemini model: %s", config.active_model())
     if not config.have_api_key():
         log.warning(
-            "No API key detected for provider '%s'. "
-            "The UI will load but /api/chat will 503 until you set one in .env.",
-            config.LLM_PROVIDER,
+            "No GOOGLE_API_KEY (or GEMINI_API_KEY) set. "
+            "The UI will load but /api/chat will 503 until you add a key in .env."
         )
 
 
@@ -60,7 +59,7 @@ class ChatOut(BaseModel):
 def health() -> dict[str, Any]:
     return {
         "ok": True,
-        "provider": config.LLM_PROVIDER,
+        "provider": "gemini",
         "model": config.active_model(),
         "has_api_key": config.have_api_key(),
         "embeddings": config.USE_EMBEDDINGS,
@@ -75,8 +74,8 @@ def chat(body: ChatIn) -> ChatOut:
         raise HTTPException(
             status_code=503,
             detail=(
-                f"No API key configured for provider '{config.LLM_PROVIDER}'. "
-                "Add GROQ_API_KEY (or OPENAI_API_KEY) to your .env file and restart."
+                "No Google API key configured. Add GOOGLE_API_KEY to your .env "
+                "(get one at https://aistudio.google.com/apikey) and restart."
             ),
         )
     try:

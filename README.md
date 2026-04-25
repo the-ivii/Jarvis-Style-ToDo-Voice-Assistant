@@ -16,7 +16,7 @@ on your machine or a single free Render instance — no paid APIs required.
 | **Tool-based Todo CRUD** | 5 tools: `add_todo`, `list_todos`, `update_todo`, `delete_todo`, `clear_completed`. |
 | **Memory system** | SQLite + `sentence-transformers` (all-MiniLM-L6-v2) for semantic recall. Keyword fallback when embeddings disabled. |
 | **Agent behaviour** | LLM decides tool-call vs chat with well-engineered system prompt, multi-step tool loop (up to 5 hops). |
-| **LLM** | **Groq** (free, fast) by default using `llama-3.3-70b-versatile`. OpenAI `gpt-4o-mini` supported by env switch. |
+| **LLM** | **Google Gemini** via `google-genai` — default model `gemini-2.0-flash` (set `GEMINI_MODEL` in `.env`). |
 
 ---
 
@@ -78,20 +78,16 @@ source .venv/bin/activate
 pip install -r requirements.txt
 ```
 
-### 2. Get a free LLM key
+### 2. Get a Google AI (Gemini) API key
 
-**Groq (recommended, free & fast):**
-1. Sign up at https://console.groq.com
-2. Create an API key at https://console.groq.com/keys
-3. It starts with `gsk_...`
-
-**OpenAI (paid):** get a key at https://platform.openai.com/api-keys
+1. Open [Google AI Studio](https://aistudio.google.com/apikey) and sign in with a Google account.
+2. Create an API key and copy it.
 
 ### 3. Configure
 ```bash
 cp .env.example .env
 ```
-Edit `.env` and set either `GROQ_API_KEY` or (if using OpenAI) flip `LLM_PROVIDER=openai` and set `OPENAI_API_KEY`.
+Edit `.env` and set `GOOGLE_API_KEY` to your key. Optional: change `GEMINI_MODEL` (default `gemini-2.0-flash`).
 
 ### 4. Run
 ```bash
@@ -159,7 +155,7 @@ can `recall_memory → list_todos → add_todo` all in one turn when appropriate
 1. Push this repo to GitHub.
 2. Log in at https://render.com → **New → Blueprint** → select your repo.
 3. Render reads `render.yaml` and provisions the web service.
-4. In the service's **Environment** tab set `GROQ_API_KEY`.
+4. In the service's **Environment** tab set `GOOGLE_API_KEY`.
 5. Done. Render gives you a public URL like `https://voice-todo-agent.onrender.com`.
 
 > The free tier sleeps after 15 min idle. First request after sleep takes ~30s.
@@ -195,8 +191,8 @@ recall_memory(query, limit?)
 list_memories(limit?)
 ```
 
-All schemas are declared in `backend/tools.py::TOOL_SCHEMAS` and use the
-standard OpenAI function-calling format (Groq accepts the same).
+All schemas are declared in `backend/tools.py::TOOL_SCHEMAS` and are passed to
+Gemini as JSON-schema function declarations.
 
 ---
 

@@ -14,13 +14,10 @@ DATA_DIR.mkdir(parents=True, exist_ok=True)
 TODOS_DB = DATA_DIR / "todos.db"
 MEMORY_DB = DATA_DIR / "memory.db"
 
-LLM_PROVIDER = os.getenv("LLM_PROVIDER", "groq").lower().strip()
-
-GROQ_API_KEY = os.getenv("GROQ_API_KEY", "").strip()
-GROQ_MODEL = os.getenv("GROQ_MODEL", "llama-3.3-70b-versatile").strip()
-
-OPENAI_API_KEY = os.getenv("OPENAI_API_KEY", "").strip()
-OPENAI_MODEL = os.getenv("OPENAI_MODEL", "gpt-4o-mini").strip()
+# Google AI Studio / Gemini — single LLM for this project
+# https://aistudio.google.com/apikey
+GOOGLE_API_KEY = os.getenv("GOOGLE_API_KEY", os.getenv("GEMINI_API_KEY", "")).strip()
+GEMINI_MODEL = os.getenv("GEMINI_MODEL", "gemini-2.0-flash").strip()
 
 USE_EMBEDDINGS = os.getenv("USE_EMBEDDINGS", "true").lower() in {"1", "true", "yes"}
 
@@ -29,10 +26,11 @@ PORT = int(os.getenv("PORT", "8000"))
 
 
 def active_model() -> str:
-    return GROQ_MODEL if LLM_PROVIDER == "groq" else OPENAI_MODEL
+    return GEMINI_MODEL
 
 
 def have_api_key() -> bool:
-    if LLM_PROVIDER == "groq":
-        return bool(GROQ_API_KEY) and GROQ_API_KEY != "your_groq_api_key_here"
-    return bool(OPENAI_API_KEY) and OPENAI_API_KEY != "your_openai_api_key_here"
+    k = GOOGLE_API_KEY
+    if not k or k in {"your_google_api_key_here", "your_gemini_api_key_here"}:
+        return False
+    return True
