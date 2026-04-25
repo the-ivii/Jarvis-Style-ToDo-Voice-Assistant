@@ -1,0 +1,85 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Jarvis-Todo · Voice AI Agent</title>
+  <link rel="stylesheet" href="/static/style.css" />
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Ctext y='.9em' font-size='90'%3E%F0%9F%8E%99%3C/text%3E%3C/svg%3E" />
+</head>
+<body>
+  <div class="app">
+    <aside class="sidebar">
+      <header class="brand">
+        <div class="logo">🎙️</div>
+        <div>
+          <h1>Jarvis-Todo</h1>
+          <p class="sub">Voice AI with memory</p>
+        </div>
+      </header>
+
+      <section class="panel">
+        <div class="panel-header">
+          <h2>Todos</h2>
+          <span id="todo-count" class="badge">0</span>
+        </div>
+        <ul id="todo-list" class="todo-list"></ul>
+      </section>
+
+      <section class="panel">
+        <div class="panel-header">
+          <h2>Memories</h2>
+          <span id="memory-count" class="badge">0</span>
+        </div>
+        <ul id="memory-list" class="memory-list"></ul>
+      </section>
+
+      <footer class="status">
+        <span id="provider-badge" class="status-pill">…</span>
+        <button id="clear-chat" class="ghost-btn" title="Clear conversation">Clear chat</button>
+      </footer>
+    </aside>
+
+    <main class="main">
+      <section id="conversation" class="conversation">
+        <div class="hero" id="hero">
+          <div class="orb" aria-hidden="true"></div>
+          <h2>Tap the mic and just talk</h2>
+          <p>
+            Try: <em>"Add buy groceries tomorrow as high priority"</em> ·
+            <em>"What's on my list?"</em> ·
+            <em>"Remember my sister's birthday is June 14"</em>
+          </p>
+        </div>
+      </section>
+
+      <div class="composer">
+        <button id="mic-btn" class="mic-btn" aria-label="Toggle microphone">
+          <svg viewBox="0 0 24 24" width="28" height="28" fill="currentColor" aria-hidden="true">
+            <path d="M12 14a3 3 0 0 0 3-3V6a3 3 0 0 0-6 0v5a3 3 0 0 0 3 3zm5-3a5 5 0 0 1-10 0H5a7 7 0 0 0 6 6.92V21h2v-3.08A7 7 0 0 0 19 11h-2z"/>
+          </svg>
+        </button>
+
+        <form id="text-form" class="text-form">
+          <input
+            id="text-input"
+            type="text"
+            autocomplete="off"
+            placeholder="Or type a message…"
+          />
+          <button type="submit" class="send-btn" aria-label="Send">
+            <svg viewBox="0 0 24 24" width="22" height="22" fill="currentColor"><path d="M2 21l21-9L2 3v7l15 2-15 2z"/></svg>
+          </button>
+        </form>
+
+        <label class="tts-toggle">
+          <input type="checkbox" id="tts-toggle" checked />
+          <span>🔊 speak replies</span>
+        </label>
+      </div>
+    </main>
+  </div>
+
+  <script src="/static/app.js"></script>
+</body>
+</html>

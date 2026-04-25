@@ -1,0 +1,17 @@
+services:
+  - type: web
+    name: voice-todo-agent
+    env: python
+    region: oregon
+    plan: free
+    buildCommand: pip install -r requirements.txt
+    startCommand: uvicorn backend.main:app --host 0.0.0.0 --port $PORT
+    envVars:
+      - key: LLM_PROVIDER
+        value: groq
+      - key: GROQ_MODEL
+        value: llama-3.3-70b-versatile
+      - key: USE_EMBEDDINGS
+        value: "false"  # keep cold start fast on the free tier
+      - key: GROQ_API_KEY
+        sync: false     # set this in the Render dashboard
