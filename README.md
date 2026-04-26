@@ -3,9 +3,6 @@
 A complete voice-enabled AI assistant that manages a personal to-do list through
 natural conversation and remembers important facts about you across sessions.
 
-Built as a submission for the **Voice-Based AI Agent** assignment. Everything runs
-on your machine or a single free Render instance — no paid APIs required.
-
 ---
 
 ## ✨ Features
@@ -71,7 +68,7 @@ voice-todo-agent/
 
 ### 1. Clone & install
 ```bash
-git clone https://github.com/<you>/voice-todo-agent.git
+git clone [https://github.com/the-ivii/voice-todo-agent.git](https://github.com/the-ivii/Jarvis-Style-ToDo-Voice-Assistant.git)
 cd voice-todo-agent
 python3 -m venv .venv
 source .venv/bin/activate
@@ -97,7 +94,6 @@ Or manually: `source .venv/bin/activate && uvicorn backend.main:app --host 0.0.0
 
 Open **http://127.0.0.1:8000** in Chrome / Edge / Safari (use `127.0.0.1` or `localhost`, not `0.0.0.0`, so the microphone works) and hit the mic button.
 
-If Google returns an error about a **leaked or revoked API key**, create a **new** key at [Google AI Studio](https://aistudio.google.com/apikey) and update `.env` only on your machine (never commit `.env`).
 
 > First time you trigger the mic, the browser will ask for microphone permission — allow it.
 > On first agent request with embeddings on, the `sentence-transformers` model downloads (~90 MB).
@@ -116,7 +112,6 @@ If Google returns an error about a **leaked or revoked API key**, create a **new
 **Memory**
 - "Remember my sister's birthday is June 14th."
 - "I'm allergic to peanuts — please remember that."
-- "My wife's name is Priya."
 - "Do you remember anything about my family?"
 - "What food allergies did I mention?"
 
@@ -139,37 +134,6 @@ call tools vs. respond conversationally:
 
 The loop supports up to **5 sequential tool hops** per user turn — e.g. the agent
 can `recall_memory → list_todos → add_todo` all in one turn when appropriate.
-
----
-
-## 💾 Memory recall
-
-1. On save, each memory is embedded with `all-MiniLM-L6-v2` (384-d) and stored
-   as a `BLOB` in SQLite.
-2. On recall, the query is embedded and cosine similarity is computed against
-   all stored vectors. Hits with similarity > 0.25 are returned, sorted desc.
-3. If the embedding model fails to load (offline, no disk) or
-   `USE_EMBEDDINGS=false`, the store automatically falls back to a
-   case-insensitive keyword LIKE search.
-
----
-
-## 🌍 Deploying Live (Render.com — free tier)
-
-1. Push this repo to GitHub.
-2. Log in at https://render.com → **New → Blueprint** → select your repo.
-3. Render reads `render.yaml` and provisions the web service.
-4. In the service's **Environment** tab set `GOOGLE_API_KEY` (same key as local; never commit it to git).
-5. Done. Render gives you a public URL like `https://voice-todo-agent.onrender.com`.
-
-The blueprint sets `PYTHON_VERSION` to 3.11.x for a supported runtime. If the build fails, check Render’s build logs.
-
-> The free tier sleeps after 15 min idle. First request after sleep takes ~30s.
-> `USE_EMBEDDINGS=false` in `render.yaml` keeps memory fast without the 90MB
-> embedding model download; flip it on if you want semantic recall in prod.
-
-**Alternatives**: Railway, Fly.io, and Google Cloud Run all work identically
-— just use the `Procfile` or the `startCommand` from `render.yaml`.
 
 ---
 
@@ -199,9 +163,3 @@ list_memories(limit?)
 
 All schemas are declared in `backend/tools.py::TOOL_SCHEMAS` and are passed to
 Gemini as JSON-schema function declarations.
-
----
-
-## 📝 License
-
-MIT — do whatever you like.
