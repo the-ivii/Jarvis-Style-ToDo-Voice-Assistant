@@ -2,14 +2,18 @@
 from __future__ import annotations
 
 import logging
+import os
+import tempfile
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, UploadFile, File, Response
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
+
+from deepgram import DeepgramClient, SpeakOptions, PrerecordedOptions
 
 from . import config
 from .agent import run_agent
@@ -20,6 +24,19 @@ logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name
 log = logging.getLogger("main")
 
 app = FastAPI(title="Voice To-Do Agent", version="1.0.0")
+
+# Lazy-loaded Deepgram client
+_dg_client: DeepgramClient | None = None
+
+
+def get_deepgram() -> DeepgramClient:
+    global _dg_client
+    if _dg_client is None:
+        if not config.have_deepgram_key():
+            raise HTTPException(status_code=503, detail="Deepgram API key not configured")
+        _dg_client = DeepgramClient(config.DEEPGRAM_API_KEY)
+    return _dg_client
+
 
 app.add_middleware(
     CORSMiddleware,
@@ -62,6 +79,7 @@ def health() -> dict[str, Any]:
         "provider": "gemini",
         "model": config.active_model(),
         "has_api_key": config.have_api_key(),
+        "has_deepgram": config.have_deepgram_key(),
         "embeddings": config.USE_EMBEDDINGS,
     }
 
@@ -94,6 +112,55 @@ def todos(filter: str = "all") -> dict[str, Any]:
 @app.get("/api/memories")
 def memories(limit: int = 50) -> dict[str, Any]:
     return list_memories(limit=limit)
+
+
+@app.get("/api/tts")
+async def tts(text: str) -> Response:
+    """Convert text to speech using Deepgram Aura (high quality)."""
+    if not text.strip():
+        raise HTTPException(status_code=400, detail="text is required")
+    try:
+        dg = get_deepgram()
+        options = SpeakOptions(
+            model="aura-asteria-en",
+            encoding="linear16",
+            container="wav",
+        )
+        
+        # Use a temporary file as the SDK expects a file path
+        with tempfile.NamedTemporaryFile(delete=False, suffix=".wav") as tmp:
+            tmp_path = tmp.name
+        
+        try:
+            dg.speak.v("1").save(tmp_path, {"text": text}, options)
+            with open(tmp_path, "rb") as f:
+                audio_data = f.read()
+            return Response(content=audio_data, media_type="audio/wav")
+        finally:
+            if os.path.exists(tmp_path):
+                os.remove(tmp_path)
+                
+    except Exception as e:
+        log.exception("TTS failed")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.post("/api/stt")
+async def stt(file: UploadFile = File(...)) -> dict[str, Any]:
+    """Convert speech to text using Deepgram Nova-2 (high accuracy)."""
+    try:
+        dg = get_deepgram()
+        source = {"buffer": await file.read(), "mimetype": file.content_type}
+        options = PrerecordedOptions(
+            model="nova-2",
+            smart_format=True,
+        )
+        response = dg.listen.prerecorded.v("1").transcribe_file(source, options)
+        transcript = response.results.channels[0].alternatives[0].transcript
+        return {"ok": True, "transcript": transcript}
+    except Exception as e:
+        log.exception("STT failed")
+        raise HTTPException(status_code=500, detail=str(e))
 
 
 # ---------------------------------------------------------------------------

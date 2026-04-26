@@ -9,6 +9,8 @@ const API = {
   todos: "/api/todos",
   memories: "/api/memories",
   health: "/api/health",
+  stt: "/api/stt",
+  tts: "/api/tts",
 };
 
 const els = {
@@ -30,91 +32,104 @@ const els = {
   clearChat: document.getElementById("clear-chat"),
 };
 
-// Conversation state (sent back to the server each turn so the agent has memory-within-session)
+// Conversation state
 let history = JSON.parse(sessionStorage.getItem("chat_history") || "[]");
 
 // -----------------------------------------------------------------------------
-// Speech Recognition (STT)
+// Deepgram Speech-to-Text (STT) via Backend
 // -----------------------------------------------------------------------------
-const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
-let recognition = null;
-let listening = false;
+let mediaRecorder = null;
+let audioChunks = [];
+let isRecording = false;
 
-if (SR) {
-  recognition = new SR();
-  recognition.lang = "en-US";
-  recognition.interimResults = true;
-  recognition.continuous = false;
+async function startRecording() {
+  try {
+    const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+    mediaRecorder = new MediaRecorder(stream);
+    audioChunks = [];
 
-  let finalTranscript = "";
+    mediaRecorder.ondataavailable = (event) => {
+      audioChunks.push(event.data);
+    };
 
-  recognition.onstart = () => {
-    listening = true;
+    mediaRecorder.onstop = async () => {
+      const audioBlob = new Blob(audioChunks, { type: "audio/webm" });
+      processSTT(audioBlob);
+      // Stop all tracks to release mic
+      stream.getTracks().forEach(track => track.stop());
+    };
+
+    mediaRecorder.start();
+    isRecording = true;
     els.micBtn.classList.add("listening");
-    finalTranscript = "";
-    els.textInput.placeholder = "Listening…";
-  };
-  recognition.onerror = (e) => {
-    console.warn("Recognition error:", e.error);
-    if (e.error === "not-allowed") {
-      showMicPermissionHelp();
-    }
-  };
-  recognition.onend = () => {
-    listening = false;
+    els.textInput.placeholder = "Listening (Deepgram)...";
+  } catch (err) {
+    console.error("Mic error:", err);
+    alert("Could not access microphone: " + err.message);
+  }
+}
+
+function stopRecording() {
+  if (mediaRecorder && isRecording) {
+    mediaRecorder.stop();
+    isRecording = false;
     els.micBtn.classList.remove("listening");
-    els.textInput.placeholder = "Or type a message…";
-    if (finalTranscript.trim()) {
-      sendMessage(finalTranscript.trim());
+    els.textInput.placeholder = "Processing...";
+  }
+}
+
+async function processSTT(blob) {
+  const formData = new FormData();
+  formData.append("file", blob, "rec.webm");
+
+  try {
+    const res = await fetch(API.stt, {
+      method: "POST",
+      body: formData,
+    });
+    const data = await res.json();
+    if (data.ok && data.transcript) {
+      els.textInput.value = data.transcript;
+      sendMessage(data.transcript);
+    } else {
+      els.textInput.placeholder = "Or type a message...";
     }
-  };
-  recognition.onresult = (event) => {
-    let interim = "";
-    for (let i = event.resultIndex; i < event.results.length; i++) {
-      const res = event.results[i];
-      if (res.isFinal) finalTranscript += res[0].transcript + " ";
-      else interim += res[0].transcript;
-    }
-    els.textInput.value = (finalTranscript + interim).trim();
-  };
-} else {
-  els.micBtn.disabled = true;
-  els.micBtn.title = "Speech recognition is not supported in this browser. Use Chrome, Edge, or Safari.";
+  } catch (e) {
+    console.error("STT failed", e);
+    els.textInput.placeholder = "STT Error.";
+  }
 }
 
 els.micBtn.addEventListener("click", () => {
-  if (!recognition) return;
-  if (listening) recognition.stop();
+  if (isRecording) stopRecording();
   else {
     cancelSpeech();
-    try { recognition.start(); } catch (_) { /* already running */ }
+    startRecording();
   }
 });
 
 // -----------------------------------------------------------------------------
-// Speech Synthesis (TTS)
+// Deepgram Text-to-Speech (TTS) via Backend
 // -----------------------------------------------------------------------------
-function speak(text) {
+const audioPlayer = new Audio();
+
+async function speak(text) {
   if (!els.ttsToggle.checked) return;
-  if (!("speechSynthesis" in window)) return;
   cancelSpeech();
-  const u = new SpeechSynthesisUtterance(text);
-  u.rate = 1.03;
-  u.pitch = 1.0;
-  // Try to pick a pleasant English voice
-  const voices = speechSynthesis.getVoices();
-  const preferred = voices.find(v => /Google.*English|Samantha|Daniel|Karen|Microsoft.*English/i.test(v.name))
-                 || voices.find(v => v.lang && v.lang.startsWith("en"));
-  if (preferred) u.voice = preferred;
-  speechSynthesis.speak(u);
-}
-function cancelSpeech() {
-  if ("speechSynthesis" in window) speechSynthesis.cancel();
+
+  try {
+    // We use a URL with the text query param
+    const ttsUrl = `${API.tts}?text=${encodeURIComponent(text)}`;
+    audioPlayer.src = ttsUrl;
+    await audioPlayer.play();
+  } catch (e) {
+    console.warn("TTS playback failed", e);
+  }
 }
 
-// Ensure voices are loaded
-if ("speechSynthesis" in window) {
-  speechSynthesis.onvoiceschanged = () => {};
+function cancelSpeech() {
+  audioPlayer.pause();
+  audioPlayer.currentTime = 0;
 }
 
 // -----------------------------------------------------------------------------

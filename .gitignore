@@ -1,21 +1,33 @@
+# Environment
+.env
+.env.local
+
+# Python
 __pycache__/
-*.py[cod]
-*$py.class
+*.pyc
+*.pyo
+*.pyd
 .venv/
 venv/
-env/
-.env
-*.db
-*.sqlite
-*.sqlite3
+ENV/
+build/
+dist/
+*.egg-info/
+
+# Databases
 data/*.db
-data/*.sqlite
+data/*.db-shm
+data/*.db-wal
+todos.db
+memory.db
+
+# OS
 .DS_Store
+Thumbs.db
+
+# IDEs
 .vscode/
 .idea/
-*.log
-node_modules/
-.pytest_cache/
-*.egg-info/
-dist/
-build/
+.project
+.pydevproject
+.settings/
